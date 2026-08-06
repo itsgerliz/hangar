@@ -1,37 +1,32 @@
-mod init;
+mod bootstrap;
 
 use anyhow::{Ok, Result};
-use clap::Parser;
+use axum::Router;
+use clap::{Parser, Subcommand};
 use env_logger::Env;
 use log::info;
 
 #[derive(Parser)]
 #[command(version, about)]
 struct CliArgs {
-    #[arg(
-        short,
-        long,
-        conflicts_with = "data",
-        conflicts_with = "database",
-        help = "Initialize a new database on path"
-    )]
-    init: Option<String>,
-    #[arg(
-        short = 'd',
-        long,
-        conflicts_with = "init",
-        required_unless_present = "init",
-        help = "Data directory path"
-    )]
-    data: Option<String>,
-    #[arg(
-        short = 'D',
-        long,
-        conflicts_with = "init",
-        required_unless_present = "init",
-        help = "Database path"
-    )]
-    database: Option<String>,
+    #[command(subcommand)]
+    command: CliArgsSubcommands,
+}
+
+#[derive(Subcommand)]
+enum CliArgsSubcommands {
+    /// Initialize a new database
+    Init {
+        /// Path to initialize the database at
+        database_path: String,
+    },
+    /// Proceed with an existing database
+    Start {
+        /// Path of the database to be used
+        database_path: String,
+        /// Path of the data directory to be used
+        datadir_path: String,
+    },
 }
 
 #[tokio::main]
@@ -40,11 +35,21 @@ async fn main() -> Result<()> {
 
     let cli_args = CliArgs::parse();
 
-    if let Some(db_path) = cli_args.init {
-		info!("Will attempt to initialize database at {db_path}");
-        init::init(&db_path).await?;
-        info!("Successfully intialized database at {db_path}");
-    }
+    match cli_args.command {
+        CliArgsSubcommands::Init { database_path } => {
+            info!("Will attempt to initialize database at {database_path}");
+            bootstrap::init(&database_path).await?;
+            info!("Successfully intialized database at {database_path}");
+            Ok(())
+        }
+        CliArgsSubcommands::Start {
+            database_path,
+            datadir_path,
+        } => {
+	        info!("Using database at {}", database_path);
+	        info!("Using data directory at {}", datadir_path);
 
-    Ok(())
+            Ok(())
+        }
+    }
 }
