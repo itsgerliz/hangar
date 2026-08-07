@@ -42,11 +42,21 @@ pub(crate) async fn init<P: AsRef<Path>>(db_path: P) -> Result<()> {
         })?;
     info!("Connected to database");
 
-    db_connection.execute(CREATE_SCHEMA_SQL).await?;
+    db_connection
+        .execute(CREATE_SCHEMA_SQL)
+        .await
+        .map_err(|error| {
+            error!("Could not create database schema");
+            error
+        })?;
     query(INSERT_STASHDESK_VERSION_SQL)
         .bind(env!("CARGO_PKG_VERSION"))
         .execute(&mut db_connection)
-        .await?;
+        .await
+        .map_err(|error| {
+            error!("Could not insert metadata into database");
+            error
+        })?;
     info!("Created database schema succesfully");
 
     Ok(())

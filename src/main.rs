@@ -1,7 +1,6 @@
 mod bootstrap;
 
 use anyhow::{Ok, Result};
-use axum::Router;
 use clap::{Parser, Subcommand};
 use env_logger::Env;
 use log::info;
@@ -46,8 +45,8 @@ async fn main() -> Result<()> {
             database_path,
             datadir_path,
         } => {
-	        info!("Using database at {}", database_path);
-	        info!("Using data directory at {}", datadir_path);
+            info!("Using database at {}", database_path);
+            info!("Using data directory at {}", datadir_path);
 
             Ok(())
         }
