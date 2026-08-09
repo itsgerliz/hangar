@@ -1,9 +1,11 @@
 mod bootstrap;
+mod sql;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use env_logger::Env;
 use log::info;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -21,11 +23,24 @@ enum CliArgsSubcommands {
     },
     /// Proceed with an existing database
     Start {
-        /// Path of the database to be used
-        database_path: String,
         /// Path of the data directory to be used
         datadir_path: String,
+        /// Path of the database to be used
+        database_path: String,
     },
+}
+
+struct DataState {
+    path: PathBuf,
+}
+
+struct DbState {
+    path: PathBuf,
+}
+
+struct AppState {
+	data_state: DataState,
+    db_state: DbState,
 }
 
 #[tokio::main]
@@ -37,16 +52,29 @@ async fn main() -> Result<()> {
     match cli_args.command {
         CliArgsSubcommands::Init { database_path } => {
             info!("Will attempt to initialize database at {database_path}");
-            bootstrap::init(&database_path).await?;
-            info!("Successfully intialized database at {database_path}");
+            bootstrap::init_db(&database_path).await?;
+            info!("Successfully intialized database!");
+
             Ok(())
         }
         CliArgsSubcommands::Start {
+        	datadir_path,
             database_path,
-            datadir_path,
         } => {
-            info!("Using database at {}", database_path);
-            info!("Using data directory at {}", datadir_path);
+            let app_state = AppState {
+	            data_state: DataState {
+	                path: PathBuf::from(datadir_path),
+	            },
+                db_state: DbState {
+                    path: PathBuf::from(database_path),
+                },
+            };
+
+            info!("Using data directory at {}", app_state.data_state.path.display());
+            info!("Using database at {}", app_state.db_state.path.display());
+
+            bootstrap::start().await?;
+            info!("Server up and running, listening for requests...");
 
             Ok(())
         }
