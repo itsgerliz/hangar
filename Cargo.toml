@@ -1,14 +1,11 @@
-[package]
-name = "stashdesk"
-version = "0.1.0"
-description = "Simple web-based file manager"
-edition = "2024"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
 
-[dependencies]
-anyhow = "1.0.104"
-axum = "0.8.9"
-clap = { version = "4.6.5", features = ["derive"] }
-env_logger = "0.11.11"
-log = "0.4.33"
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite"] }
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Germán (@itsgerliz)"]
+description = "Simple, web-based and self-hosted file cloud"
+license = "BSD-3-Clause"
+repository = "https://github.com/itsgerliz/"
