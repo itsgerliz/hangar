@@ -8,3 +8,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+sqlx = { version = "0.9.0", features = ["sqlite", "runtime-tokio"] }
+tracing = "0.1.44"
