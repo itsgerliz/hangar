@@ -1,14 +1,15 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use std::path::PathBuf;
+
+pub struct HangarState {
+    database: PathBuf,
+    data_directory: PathBuf,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl HangarState {
+    pub fn new<P: Into<PathBuf>>(database: P, data_directory: P) -> Self {
+        Self {
+            database: database.into(),
+            data_directory: data_directory.into(),
+        }
     }
 }

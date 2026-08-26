@@ -188,6 +188,7 @@ dependencies = [
  "anyhow",
  "clap",
  "env_logger",
+ "hangar-core",
  "log",
  "tokio",
 ]
