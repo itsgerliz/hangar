@@ -26,5 +26,9 @@ async fn main() -> anyhow::Result<()> {
 
     let hangar_state = HangarState::new(cli_args.database, cli_args.data).await?;
 
+    hangar_state.migrate().await?;
+
+    hangar_state.shutdown().await;
+
     Ok(())
 }

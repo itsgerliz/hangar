@@ -36,6 +36,12 @@ impl HangarState {
         })
     }
 
+    pub async fn migrate(&self) -> Result<(), sqlx::Error> {
+		sqlx::migrate!("./migrations").run(&self.database_pool).await?;
+
+		Ok(())
+	}
+
     pub async fn shutdown(self) {
    		info!("Server shutdown");
 
