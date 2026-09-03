@@ -13,3 +13,6 @@ clap = { version = "4.6.6", features = ["derive"] }
 hangar-core = { path = "../hangar-core" }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[features]
+_debug_handler = ["hangar-core/_debug_handler"]
