@@ -1,14 +1,21 @@
 mod routes;
 
+use argon2::{Argon2, PasswordHasher, password_hash};
 use humantime::format_duration;
 use sqlx::{
     migrate,
     sqlite::{SqliteConnectOptions, SqlitePool},
 };
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    io::{self, Write},
+    path::PathBuf,
+    sync::Arc,
+    time::Instant,
+};
 use thiserror::Error;
 use tokio::{
-    net::TcpListener, sync::watch::{Sender, channel},
+    net::TcpListener,
+    sync::watch::{Sender, channel},
 };
 use tracing::info;
 
@@ -18,6 +25,8 @@ pub enum HangarError {
     Database(#[from] sqlx::Error),
     #[error("IO error")]
     IO(#[from] std::io::Error),
+    #[error("Password hashing error")]
+    PasswordHashing(#[from] password_hash::Error),
 }
 
 pub struct HangarState {
@@ -73,6 +82,28 @@ impl HangarState {
             .await
             .map_err(|migrate_error| sqlx::Error::from(migrate_error))?;
 
+        if let None = sqlx::query("SELECT 1 FROM hangar LIMIT 1")
+            .fetch_optional(&hangar_state.database_pool)
+            .await?
+        {
+            print!("New admin password: ");
+            io::stdout().flush()?;
+
+            let mut new_admin_password = String::new();
+            io::stdin().read_line(&mut new_admin_password)?;
+            let new_admin_password = String::from(new_admin_password.trim());
+
+            let argon2_ctx = Argon2::default();
+            let new_admin_password_hash = argon2_ctx
+                .hash_password(new_admin_password.as_bytes())?
+                .to_string();
+
+            sqlx::query("INSERT INTO hangar (id, admin_password_hash) VALUES (1, $1)")
+                .bind(new_admin_password_hash)
+                .execute(&hangar_state.database_pool)
+                .await?;
+        }
+
         info!("Server ready for startup");
 
         Ok(hangar_state)
@@ -80,12 +111,12 @@ impl HangarState {
 
     // Destructor
     pub fn shutdown(&self) {
-	    // Reason: `send()` only returns an error if there are zero active Receivers on the
-		// shutdown channel, this can only happen if `shutdown()` is called before `serve()`
+        // Reason: `send()` only returns an error if there are zero active Receivers on the
+        // shutdown channel, this can only happen if `shutdown()` is called before `serve()`
         // is called or after it exits (because `serve()` calls the `shutdown_handler()`,
         // which in turn holds the shutdown channel only Receiver)
         // In either case, there is nothing to shut down
-    	let _ = self.shutdown_tx.send(true);
+        let _ = self.shutdown_tx.send(true);
     }
 
     pub async fn serve(self: Arc<Self>) -> Result<(), HangarError> {
