@@ -5,9 +5,11 @@ use sqlx::{
     migrate,
     sqlite::{SqliteConnectOptions, SqlitePool},
 };
-use tokio::net::TcpListener;
-use std::{path::PathBuf, time::Instant};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 use thiserror::Error;
+use tokio::{
+    net::TcpListener, sync::watch::{Sender, channel},
+};
 use tracing::info;
 
 #[derive(Error, Debug)]
@@ -15,25 +17,27 @@ pub enum HangarError {
     #[error("Database error")]
     Database(#[from] sqlx::Error),
     #[error("IO error")]
-    IO(#[from] std::io::Error)
+    IO(#[from] std::io::Error),
 }
 
 pub struct HangarState {
-	started_at: Instant,
+    started_at: Instant,
     database: PathBuf,
-    database_pool: SqlitePool,
     data: PathBuf,
+    database_pool: SqlitePool,
+    shutdown_tx: Sender<bool>,
 }
 
 impl HangarState {
+    // Constructor
     pub async fn new<P1, P2>(database: P1, data: P2) -> Result<Self, HangarError>
     where
         P1: Into<PathBuf>,
         P2: Into<PathBuf>,
     {
         let started_at = Instant::now();
-
         let database = database.into();
+        let data = data.into();
 
         // Foreign keys constraints enforcement is enabled by default by sqlx
         // Enable file creation so new databases are handled automatically
@@ -44,13 +48,14 @@ impl HangarState {
         )
         .await?;
 
-        let data = data.into();
+        let (shutdown_tx, _) = channel(false);
 
         let hangar_state = Self {
-        	started_at,
+            started_at,
             database,
-            database_pool,
             data,
+            database_pool,
+            shutdown_tx,
         };
 
         info!(
@@ -63,47 +68,58 @@ impl HangarState {
         );
 
         info!("Running database migrations");
-        hangar_state.migrate().await?;
+        migrate!("./migrations")
+            .run(&hangar_state.database_pool)
+            .await
+            .map_err(|migrate_error| sqlx::Error::from(migrate_error))?;
 
-        info!("Server starting up");
-        hangar_state.serve().await?;
+        info!("Server ready for startup");
 
         Ok(hangar_state)
     }
 
-    pub fn shutdown(self) {
-    	let uptime = self.uptime();
+    // Destructor
+    pub fn shutdown(&self) {
+	    // Reason: `send()` only returns an error if there are zero active Receivers on the
+		// shutdown channel, this can only happen if `shutdown()` is called before `serve()`
+        // is called or after it exits (because `serve()` calls the `shutdown_handler()`,
+        // which in turn holds the shutdown channel only Receiver)
+        // In either case, there is nothing to shut down
+    	let _ = self.shutdown_tx.send(true);
+    }
 
-        info!("Server has run {}", uptime);
+    pub async fn serve(self: Arc<Self>) -> Result<(), HangarError> {
+        let router = routes::router().with_state(Arc::clone(&self));
+
+        let listener = TcpListener::bind("[::]:9070").await?;
+
+        info!("Server startup");
+        axum::serve(listener, router)
+            .with_graceful_shutdown(async move { self.shutdown_handler().await })
+            .await?;
+
+        Ok(())
+    }
+
+    async fn shutdown_handler(&self) {
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        // Reason: Error is impossible, the only caller of this function (`serve()`) will
+        // always hold at least one instance of Arc<HangarState> (therefore holding HangarState),
+        // since the shutdown channel only Sender lives inside HangarState, this error is impossible
+        let _ = shutdown_rx.wait_for(|shutdown| *shutdown).await;
+
+        self.database_pool.close().await;
+
+        info!("Server has run for {}", self.uptime());
         info!("Server shutdown");
     }
 
-    // Triggered by constructor
-    async fn migrate(&self) -> Result<(), HangarError> {
-	   	Ok(
-		    migrate!("./migrations")
-		        .run(&self.database_pool)
-		        .await
-		        .map_err(|migrate_error| sqlx::Error::from(migrate_error))?
-	    )
-    }
-
-    // Triggered by constructor
-    async fn serve(&self) -> Result<(), HangarError> {
-   		let router = routes::router();
-
-     	let listener = TcpListener::bind("[::]:9070").await?;
-
-     	info!("Server startup");
-      	axum::serve(listener, router).await?;
-
-    	Ok(())
-    }
 
     fn uptime(&self) -> String {
-	   	Instant::now()
-	        .checked_duration_since(self.started_at)
-	        .map(|duration| format_duration(duration).to_string())
-	       	.unwrap_or_default()
+        Instant::now()
+            .checked_duration_since(self.started_at)
+            .map(|duration| format_duration(duration).to_string())
+            .unwrap_or_default()
     }
 }

@@ -1,6 +1,7 @@
 use clap::Parser;
 use hangar_core::HangarState;
-use std::path::PathBuf;
+use tracing::warn;
+use std::{path::PathBuf, sync::Arc};
 use tracing_subscriber::{EnvFilter, fmt as tracing_subscriber_builder};
 
 #[derive(Parser)]
@@ -22,9 +23,18 @@ async fn main() -> anyhow::Result<()> {
         .with_target(true)
         .init();
 
-    let hangar_state = HangarState::new(cli_args.database, cli_args.data).await?;
+    let hangar_state = Arc::new(HangarState::new(cli_args.database, cli_args.data).await?);
 
-    hangar_state.shutdown();
+    let ctrl_c_trap_state = Arc::clone(&hangar_state);
+    tokio::spawn(async move {
+    	if let Ok(()) = tokio::signal::ctrl_c().await {
+	   		println!("");
+	    	warn!("Ctrl-C received, shutting down server");
+			ctrl_c_trap_state.shutdown();
+     	}
+    });
+
+    hangar_state.serve().await?;
 
     Ok(())
 }
