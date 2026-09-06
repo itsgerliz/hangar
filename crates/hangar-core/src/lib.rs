@@ -115,7 +115,6 @@ impl HangarState {
         info!("Server shutdown");
     }
 
-
     fn uptime(&self) -> String {
         Instant::now()
             .checked_duration_since(self.started_at)
