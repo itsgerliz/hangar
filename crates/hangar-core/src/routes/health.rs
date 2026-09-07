@@ -10,7 +10,7 @@ pub(super) struct HealthResponse {
 }
 
 #[cfg_attr(feature = "_debug_handler", axum::debug_handler)]
-pub(super) async fn get(State(state): State<Arc<HangarState>>) -> Json<HealthResponse> {
+pub(super) async fn health(State(state): State<Arc<HangarState>>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         uptime: state.uptime(),

@@ -113,7 +113,7 @@ impl HangarState {
     pub fn shutdown(&self) {
         // Reason: `send()` only returns an error if there are zero active Receivers on the
         // shutdown channel, this can only happen if `shutdown()` is called before `serve()`
-        // is called or after it exits (because `serve()` calls the `shutdown_handler()`,
+        // is called or after it exits (because `serve()` calls `shutdown_handler()`,
         // which in turn holds the shutdown channel only Receiver)
         // In either case, there is nothing to shut down
         let _ = self.shutdown_tx.send(true);
