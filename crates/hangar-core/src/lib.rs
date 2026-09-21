@@ -119,6 +119,10 @@ impl HangarState {
         let _ = self.shutdown_tx.send(true);
     }
 
+    pub fn prepare(self) -> Arc<Self> {
+    	Arc::new(self)
+    }
+
     pub async fn serve(self: Arc<Self>) -> Result<(), HangarError> {
         let router = routes::router().with_state(Arc::clone(&self));
 
