@@ -601,6 +601,7 @@ version = "0.1.0"
 name = "hangar-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "axum",
  "humantime",

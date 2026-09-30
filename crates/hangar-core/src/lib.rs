@@ -8,14 +8,14 @@ use sqlx::{
 };
 use std::{
     io::{self, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
 use thiserror::Error;
 use tokio::{
     net::TcpListener,
-    sync::watch::{Sender, channel},
+    sync::{Notify, OnceCell},
 };
 use tracing::info;
 
@@ -30,51 +30,37 @@ pub enum HangarError {
 }
 
 pub struct HangarState {
-    started_at: Instant,
     database: PathBuf,
-    data: PathBuf,
     database_pool: SqlitePool,
-    shutdown_tx: Sender<bool>,
+    data: PathBuf,
+    started_at: OnceCell<Instant>,
+    is_ready: Notify,
+    do_shutdown: Notify,
 }
 
 impl HangarState {
     // Constructor
-    pub async fn new<P1, P2>(database: P1, data: P2) -> Result<Self, HangarError>
+    pub async fn new<P1, P2>(database: P1, data: P2) -> Result<Arc<Self>, HangarError>
     where
-        P1: Into<PathBuf>,
-        P2: Into<PathBuf>,
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
     {
-        let started_at = Instant::now();
-        let database = database.into();
-        let data = data.into();
-
-        // Foreign keys constraints enforcement is enabled by default by sqlx
-        // Enable file creation so new databases are handled automatically
-        let database_pool = SqlitePool::connect_with(
-            SqliteConnectOptions::new()
-                .filename(&database)
-                .create_if_missing(true),
-        )
-        .await?;
-
-        let (shutdown_tx, _) = channel(false);
-
         let hangar_state = Self {
-            started_at,
-            database,
-            data,
-            database_pool,
-            shutdown_tx,
+            database: database.as_ref().to_path_buf(),
+            database_pool: SqlitePool::connect_with(
+                SqliteConnectOptions::new()
+                    .filename(database.as_ref())
+                    // Enable foreign keys constraints enforcement
+                    .foreign_keys(true)
+                    // Enable file creation so new databases are handled automatically
+                    .create_if_missing(true),
+            )
+            .await?,
+            data: data.as_ref().to_path_buf(),
+            started_at: OnceCell::new(),
+            is_ready: Notify::new(),
+            do_shutdown: Notify::new(),
         };
-
-        info!(
-            "Database in use: {}",
-            hangar_state.database.to_string_lossy()
-        );
-        info!(
-            "Data being served from: {}",
-            hangar_state.data.to_string_lossy()
-        );
 
         info!("Running database migrations");
         migrate!("./migrations")
@@ -104,8 +90,6 @@ impl HangarState {
                 .await?;
         }
 
-        info!("Server ready for startup");
-
         Ok(hangar_state)
     }
 
@@ -119,10 +103,16 @@ impl HangarState {
         let _ = self.shutdown_tx.send(true);
     }
 
+    pub fn prepare(self) -> Arc<Self> {
+        Arc::new(self)
+    }
+
     pub async fn serve(self: Arc<Self>) -> Result<(), HangarError> {
         let router = routes::router().with_state(Arc::clone(&self));
 
         let listener = TcpListener::bind("[::]:9070").await?;
+
+        self.ready_tx.send_replace(true);
 
         info!("Server startup");
         axum::serve(listener, router)
@@ -130,6 +120,10 @@ impl HangarState {
             .await?;
 
         Ok(())
+    }
+
+    pub fn is_ready(&self) -> bool {
+        let ready_rx = self.ready_tx.subscribe();
     }
 
     async fn shutdown_handler(&self) {

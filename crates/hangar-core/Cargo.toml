@@ -17,5 +17,8 @@ thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["net"] }
 tracing = "0.1.44"
 
+[dev-dependencies]
+anyhow = "1.0.104"
+
 [features]
 _debug_handler = ["axum/macros"]
